@@ -14,6 +14,7 @@ import database as db
 import pricing
 import cost_engine
 import exporter
+import envelope
 import seed_usage
 from auth import session, require_pro, entitlement
 
@@ -170,6 +171,7 @@ class BudgetBody(BaseModel):
     period: Optional[str] = "monthly"
     limit_usd: float
     alert_pct: Optional[int] = 80
+    action: Optional[str] = "notify"   # notify | throttle | require_approval | block (§7.7)
 
 
 @app.get("/api/budgets")
@@ -190,6 +192,21 @@ class BudgetUpdate(BaseModel):
     limit_usd: Optional[float] = None
     alert_pct: Optional[int] = None
     status: Optional[str] = None
+    action: Optional[str] = None
+
+
+class BudgetCheckBody(BaseModel):
+    scope: Optional[str] = "global"
+    scope_ref: Optional[str] = None
+    projected_usd: Optional[float] = 0.0
+
+
+@app.post("/api/budget-check")
+def budget_check(body: BudgetCheckBody, owner: str = Depends(require_owner)):
+    """Operational budget gate (§7.7): apps call this before starting priced work to get
+    allow/notify/throttle/require_approval/block for the caller's budgets."""
+    return db.budget_check(owner, scope=body.scope, scope_ref=body.scope_ref,
+                           projected_usd=body.projected_usd)
 
 
 @app.put("/api/budgets/{bid}")
@@ -215,15 +232,21 @@ def project_audit(pid: str, request: Request, owner: str = Depends(require_owner
     return {"audit": db.audit_for(pid)}
 
 
+def _wrapped(owner, proj, days):
+    payload = exporter.to_package(owner, proj, days=days)
+    return envelope.wrap("spendguard", "cost_report", (proj or {}).get("id") or "all",
+                         "1.0.0", payload, nyquest_user_id=owner)
+
+
 @app.get("/api/export/json")
 def export_json(request: Request, project_id: Optional[str] = None, days: int = 30,
                 owner: str = Depends(require_owner)):
     proj = db.get_project(project_id, owner) if project_id else None
-    return exporter.to_package(owner, proj, days=days)
+    return _wrapped(owner, proj, days)
 
 
 @app.get("/api/export/yaml")
 def export_yaml(request: Request, project_id: Optional[str] = None, days: int = 30,
                 owner: str = Depends(require_owner)):
     proj = db.get_project(project_id, owner) if project_id else None
-    return PlainTextResponse(exporter.to_yaml(exporter.to_package(owner, proj, days=days)))
+    return PlainTextResponse(exporter.to_yaml(_wrapped(owner, proj, days)))

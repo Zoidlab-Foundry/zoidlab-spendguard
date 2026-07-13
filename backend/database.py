@@ -92,6 +92,10 @@ def init():
             CREATE INDEX IF NOT EXISTS idx_audit ON audit_logs(entity_type, entity_id, created_at);
             """
         )
+        # budget enforcement action (§7.7): what happens when over — notify|require_approval|throttle|block
+        bcols = [r["name"] for r in c.execute("PRAGMA table_info(budgets)")]
+        if "action" not in bcols:
+            c.execute("ALTER TABLE budgets ADD COLUMN action TEXT DEFAULT 'notify'")
 
 
 def _visible(col="owner_user_id"):
@@ -206,12 +210,15 @@ def list_events(viewer=None, project_id=None, model=None, limit=200):
 # --- budgets -----------------------------------------------------------
 def create_budget(data, owner):
     bid = new_id("bud"); now = now_iso()
+    action = data.get("action") or "notify"
+    if action not in ("notify", "require_approval", "throttle", "block"):
+        action = "notify"
     with _conn() as c:
-        c.execute("""INSERT INTO budgets (id,project_id,owner_user_id,name,scope,scope_ref,period,limit_usd,alert_pct,status,created_at,updated_at)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        c.execute("""INSERT INTO budgets (id,project_id,owner_user_id,name,scope,scope_ref,period,limit_usd,alert_pct,status,action,created_at,updated_at)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                   (bid, data.get("project_id"), owner, data["name"], data.get("scope", "global"),
                    data.get("scope_ref"), data.get("period", "monthly"), float(data["limit_usd"]),
-                   int(data.get("alert_pct", 80)), "active", now, now))
+                   int(data.get("alert_pct", 80)), "active", action, now, now))
     audit("budget", bid, "created", owner)
     return get_budget(bid, owner)
 
@@ -227,7 +234,7 @@ def update_budget(bid, data, owner):
     if not b or (b.get("owner_user_id") and b["owner_user_id"] != owner and not is_admin(owner)):
         return None
     fields, args = [], []
-    for k in ("name", "scope", "scope_ref", "period", "status"):
+    for k in ("name", "scope", "scope_ref", "period", "status", "action"):
         if k in data and data[k] is not None:
             fields.append(f"{k}=?"); args.append(data[k])
     if data.get("limit_usd") is not None:
@@ -289,3 +296,37 @@ def list_budgets(viewer=None):
             b["state"] = "over" if pct >= 100 else ("alert" if pct >= (b["alert_pct"] or 80) else "ok")
             out.append(b)
     return out
+
+
+_ACTION_RANK = {"ok": 0, "notify": 1, "throttle": 2, "require_approval": 3, "block": 4}
+
+
+def budget_check(viewer=None, scope="global", scope_ref=None, projected_usd=0.0):
+    """Operational budget gate (§7.7): given a proposed piece of work (its scope + a
+    projected cost), return the strongest enforcement action across applicable budgets.
+    action: ok | notify | throttle | require_approval | block. allowed=False only on block."""
+    proj = float(projected_usd or 0)
+    worst = {"allowed": True, "action": "ok", "state": "ok", "budget": None,
+             "projected_pct": None, "reason": "No budget threshold reached."}
+    for b in list_budgets(viewer):
+        if b.get("status") != "active":
+            continue
+        applies = b["scope"] == "global" or (b["scope"] == scope and (b.get("scope_ref") or None) == (scope_ref or None))
+        if not applies:
+            continue
+        lim = b["limit_usd"] or 0
+        projected = b["spent_usd"] + proj
+        pct = round((projected / lim) * 100, 1) if lim else 0
+        if lim and projected >= lim:
+            act = b.get("action") or "notify"
+            reason = f"'{b['name']}' would be exceeded (${round(projected,4)} of ${lim})."
+        elif pct >= (b["alert_pct"] or 80):
+            act = "notify"
+            reason = f"'{b['name']}' at {pct}% of its ${lim} {b['period']} limit."
+        else:
+            continue
+        if _ACTION_RANK[act] > _ACTION_RANK[worst["action"]]:
+            worst = {"allowed": act != "block", "action": act, "state": "over" if lim and projected >= lim else "alert",
+                     "budget": {"id": b["id"], "name": b["name"], "scope": b["scope"], "limit_usd": lim},
+                     "projected_pct": pct, "reason": reason}
+    return worst
