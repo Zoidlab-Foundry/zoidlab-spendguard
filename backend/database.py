@@ -69,6 +69,17 @@ def init():
             CREATE INDEX IF NOT EXISTS idx_ev_owner ON usage_events(owner_user_id, occurred_at);
             CREATE INDEX IF NOT EXISTS idx_ev_project ON usage_events(project_id, occurred_at);
             CREATE INDEX IF NOT EXISTS idx_ev_model ON usage_events(model);
+            -- canonical usage-event fields (blueprint §6.3): pin cost to a pricing snapshot,
+            -- carry environment + correlation id + the resource that produced the usage.
+            """
+        )
+        ecols = [r["name"] for r in c.execute("PRAGMA table_info(usage_events)")]
+        for col, ddl in [("pricing_snapshot", "TEXT"), ("environment", "TEXT"),
+                         ("correlation_id", "TEXT"), ("resource_ref", "TEXT")]:
+            if col not in ecols:
+                c.execute(f"ALTER TABLE usage_events ADD COLUMN {col} {ddl}")
+        c.executescript(
+            """
             CREATE TABLE IF NOT EXISTS budgets (
                 id TEXT PRIMARY KEY, project_id TEXT, owner_user_id TEXT, name TEXT NOT NULL,
                 scope TEXT DEFAULT 'global', scope_ref TEXT, period TEXT DEFAULT 'monthly',
@@ -158,17 +169,21 @@ def record_event(data, owner):
     ct = int(data.get("completion_tokens") or 0)
     tt = int(data.get("total_tokens") or (pt + ct))
     cost = pricing.cost_usd(model, pt, ct)
+    snap = pricing.PRICE_SNAPSHOT  # cost is pinned to this pricing version at ingest (§7.7)
+    rref = data.get("resource_ref")
     with _conn() as c:
         c.execute("""INSERT INTO usage_events (id,project_id,owner_user_id,app,feature,model,provider,
-                     prompt_tokens,completion_tokens,total_tokens,cost_usd,latency_ms,status,source,metadata,occurred_at,created_at)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     prompt_tokens,completion_tokens,total_tokens,cost_usd,latency_ms,status,source,metadata,
+                     pricing_snapshot,environment,correlation_id,resource_ref,occurred_at,created_at)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                   (eid, data.get("project_id"), owner, data.get("app", ""), data.get("feature", ""),
                    model, pricing.provider_of(model), pt, ct, tt, cost, data.get("latency_ms"),
                    data.get("status", "ok"), data.get("source", "api"), _j(data.get("metadata", {})),
-                   data.get("occurred_at") or now, now))
+                   snap, data.get("environment") or "production", data.get("correlation_id"),
+                   _j(rref) if rref else None, data.get("occurred_at") or now, now))
     return {"id": eid, "model": model, "prompt_tokens": pt, "completion_tokens": ct,
             "total_tokens": tt, "cost_usd": cost, "provider": pricing.provider_of(model),
-            "price_known": pricing.known(model)}
+            "price_known": pricing.known(model), "pricing_snapshot": snap}
 
 
 def list_events(viewer=None, project_id=None, model=None, limit=200):
@@ -183,7 +198,8 @@ def list_events(viewer=None, project_id=None, model=None, limit=200):
         rows = c.execute(q, args).fetchall()
     out = []
     for r in rows:
-        d = dict(r); d["metadata"] = _pj(d.get("metadata"), {}); out.append(d)
+        d = dict(r); d["metadata"] = _pj(d.get("metadata"), {})
+        d["resource_ref"] = _pj(d.get("resource_ref"), None); out.append(d)
     return out
 
 

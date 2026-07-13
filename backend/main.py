@@ -101,6 +101,10 @@ class EventBody(BaseModel):
     source: Optional[str] = "api"
     occurred_at: Optional[str] = None
     metadata: Optional[dict] = {}
+    # canonical usage-event fields (blueprint §6.3)
+    environment: Optional[str] = None            # development | testing | production
+    correlation_id: Optional[str] = None         # ties usage to a run/trace
+    resource_ref: Optional[dict] = None          # {package_id, resource_id, version_id?}
 
 
 @app.post("/api/events")
