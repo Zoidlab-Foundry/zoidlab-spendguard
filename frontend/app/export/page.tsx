@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 
 const HOOKS = [
+  { name: "ZoidLab Workflow Builder", desc: "LIVE — every Builder workflow run emits its real model usage here automatically (source: builder).", href: "https://builder.zoidlab.ai", live: true },
   { name: "ZoidLab TrustGate", desc: "Enforce a cost_limit policy using these per-model spend figures.", href: "https://trustgate.zoidlab.ai" },
-  { name: "ZoidLab Workflow Builder", desc: "Emit a usage event to SpendGuard from every model node run.", href: "https://builder.zoidlab.ai" },
   { name: "ZoidLab Foundry", desc: "Roll this cost report into the Foundry overview control plane.", href: "https://foundry.zoidlab.ai" },
 ];
 
@@ -38,7 +38,7 @@ export default function ExportPage() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-faint">Integration wiring (event emit + report roll-up) lands with the cross-app hooks phase; the export format below is the contract.</p>
+          <p className="mt-2 text-[11px] text-faint">The Workflow Builder integration is <b className="text-vi">live</b> — its runs emit real usage here automatically. TrustGate cost-limit enforcement and Foundry roll-up use the export contract below.</p>
           <h2 className="mb-3 mt-6 text-[15px] font-semibold">Download</h2>
           <div className="flex flex-wrap gap-2">
             <a href={api.exportJsonUrl(pid || undefined)} target="_blank" rel="noopener" className="rounded-lg bg-vi px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90">Download JSON report</a>

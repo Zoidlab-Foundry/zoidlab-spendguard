@@ -43,21 +43,51 @@ CHEAPER_ALT = {
 }
 
 
+# Relay/event model ids are often provider-prefixed & versioned
+# (e.g. "openai/gpt-4o-mini", "anthropic/claude-sonnet-5"). Map onto a price-table key.
+_ALIASES = [
+    ("gpt-4o-mini", "gpt-4o-mini"), ("gpt-4o", "gpt-4o"), ("gpt-4.1-mini", "gpt-4.1-mini"),
+    ("gpt-4.1", "gpt-4.1"), ("o3-mini", "o3-mini"),
+    ("opus", "claude-3-opus"), ("sonnet-4", "claude-sonnet-4.5"), ("sonnet", "claude-3.5-sonnet"),
+    ("haiku", "claude-3.5-haiku"),
+    ("gemini-2.5-flash", "gemini-2.5-flash"), ("gemini-1.5-flash", "gemini-1.5-flash"),
+    ("gemini-2.5-pro", "gemini-2.5-pro"), ("gemini", "gemini-2.5-flash"),
+    ("deepseek-reasoner", "deepseek-reasoner"), ("deepseek", "deepseek-chat"),
+    ("llama", "llama-3.3-70b"), ("mistral", "mistral-large"),
+]
+
+
+def resolve(model: str):
+    """Map a (possibly provider-prefixed/versioned) model id onto a price-table key, or None."""
+    if not model:
+        return None
+    m = str(model).lower().split("/")[-1]
+    if m in PRICES:
+        return m
+    for hint, key in _ALIASES:
+        if hint in m:
+            return key
+    return None
+
+
 def known(model: str) -> bool:
-    return model in PRICES
+    return resolve(model) is not None
 
 
 def provider_of(model: str) -> str:
-    return PRICES.get(model, (0, 0, "unknown", "unknown"))[2]
+    key = resolve(model)
+    return PRICES.get(key, (0, 0, "unknown", "unknown"))[2] if key else "unknown"
 
 
 def tier_of(model: str) -> str:
-    return PRICES.get(model, (0, 0, "unknown", "unknown"))[3]
+    key = resolve(model)
+    return PRICES.get(key, (0, 0, "unknown", "unknown"))[3] if key else "unknown"
 
 
 def cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Exact cost from token counts and the list price. 0.0 for unknown models."""
-    p = PRICES.get(model)
+    key = resolve(model)
+    p = PRICES.get(key) if key else None
     if not p:
         return 0.0
     inp, out, _, _ = p
