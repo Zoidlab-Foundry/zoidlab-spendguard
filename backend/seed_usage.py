@@ -6,7 +6,7 @@ cost_usd is computed by the same pricing path as real events, so the demo is int
 honest (real arithmetic over synthetic tokens).
 """
 import datetime
-import database as db
+import db_pg as db
 
 # Deterministic synthetic traffic: (model, app, feature, prompt_toks, completion_toks, calls_over_window)
 _PATTERN = [
@@ -23,7 +23,7 @@ _PATTERN = [
 
 
 def run():
-    with db._conn() as c:
+    with db.admin_conn() as c:
         existing = c.execute("SELECT COUNT(*) n FROM usage_events").fetchone()["n"]
     if existing:
         return 0

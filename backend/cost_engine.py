@@ -7,19 +7,21 @@ recommendations are rule-based over actual spend concentration.
 """
 import datetime
 import pricing
-from database import _conn, _visible
+from db_pg import _tx
 
 
 def _rows(viewer, days=None, project_id=None):
-    q = f"SELECT * FROM usage_events WHERE {_visible()}"
-    args = [viewer]
+    # owner visibility is enforced by RLS inside _tx(viewer), not by a WHERE clause
+    q = "SELECT * FROM usage_events WHERE TRUE"
+    args = []
     if days:
         start = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).isoformat() + "Z"
-        q += " AND occurred_at>=?"; args.append(start)
+        q += " AND occurred_at>=%s"; args.append(start)
     if project_id and project_id != "all":
-        q += " AND project_id=?"; args.append(project_id)
-    with _conn() as c:
-        return [dict(r) for r in c.execute(q, args).fetchall()]
+        q += " AND project_id=%s"; args.append(project_id)
+    with _tx(viewer) as cur:
+        cur.execute(q, args)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def dashboard_stats(viewer=None):
