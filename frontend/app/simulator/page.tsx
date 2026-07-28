@@ -42,7 +42,7 @@ export default function Simulator() {
             </select>
           </label>
         </div>
-        <button onClick={run} disabled={busy} className="mt-4 rounded-lg bg-vi px-5 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">{busy ? "Simulating…" : "Simulate"}</button>
+        <button data-assist="run-simulator" onClick={run} disabled={busy} className="mt-4 rounded-lg bg-vi px-5 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">{busy ? "Simulating…" : "Simulate"}</button>
       </div>
 
       {res?.error && <div className="mt-4 rounded-xl border border-bad/30 bg-bad/5 px-4 py-3 text-[13px] text-bad">{res.error}</div>}

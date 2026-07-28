@@ -39,7 +39,7 @@ export default function Budgets() {
           <h1 className="text-[24px] font-semibold">Budgets</h1>
           <p className="mt-1 text-[13px] text-dim">Set spend caps by scope and period. Spend is summed live from the ledger for the current period.</p>
         </div>
-        <button onClick={() => setOpen(true)} className="rounded-lg bg-vi px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90">+ New budget</button>
+        <button data-assist="new-budget" onClick={() => setOpen(true)} className="rounded-lg bg-vi px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90">+ New budget</button>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
