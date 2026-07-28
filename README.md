@@ -31,8 +31,10 @@ Part of the [ZoidLab Foundry](https://foundry.zoidlab.ai). Requires **Nyquest Pr
 
 ## Stack
 
-- **Backend**: FastAPI + SQLite (Postgres-portable, JSON-as-TEXT). `pricing.py` (price table),
-  `cost_engine.py` (deterministic analytics), `database.py`, `exporter.py`.
+- **Backend**: FastAPI + **Postgres with per-tenant FORCE row-level security** (every query runs
+  as the non-superuser `app_rls` role keyed on `app.current_owner`, so tenant isolation is
+  enforced by the database, not by application code). `pricing.py` (price table),
+  `cost_engine.py` (deterministic analytics), `db_pg.py`, `exporter.py`.
 - **Frontend**: Next.js 15 + React 19 + Tailwind. Shared `zb_session` SSO + reusable
   `FoundryAccessGate` Pro gate.
 - **Deploy** (zoidberg): `spendguard-api` (:8701 uvicorn) + `spendguard-web` (:3701 next) behind
