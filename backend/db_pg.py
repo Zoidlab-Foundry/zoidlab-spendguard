@@ -267,7 +267,7 @@ def get_budget(bid, viewer=None):
 
 def update_budget(bid, data, owner):
     b = get_budget(bid, owner)
-    if not b or (b.get("owner_user_id") and b["owner_user_id"] != owner and not is_admin(owner)):
+    if not b or (b.get("owner_user_id") != owner and not is_admin(owner)):
         return None
     fields, args = [], []
     for k in ("name", "scope", "scope_ref", "period", "status", "action"):
@@ -286,7 +286,7 @@ def update_budget(bid, data, owner):
 
 def delete_budget(bid, owner):
     b = get_budget(bid, owner)
-    if not b or (b.get("owner_user_id") and b["owner_user_id"] != owner and not is_admin(owner)):
+    if not b or (b.get("owner_user_id") != owner and not is_admin(owner)):
         return False
     with _tx(owner) as cur:
         cur.execute("DELETE FROM budgets WHERE id=%s", (bid,))
